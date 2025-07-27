@@ -1,0 +1,106 @@
+                          START
+                                |
+                                V
+                 User Types Message in Gradio UI (app.py)
+                                |
+                                V
+             `respond_to_user` function called (app.py)
+                                |
+                                V
+          `machine_agent_manager.invoke_agent()` called (agent_setup.py)
+            (Converts Gradio history to LangChain messages & prepares initial AgentState)
+                                |
+                                V
+            `langgraph_app.invoke(initial_state)` starts (orchestrator_graph.py)
+            (Initiates the LangGraph workflow)
+                                |
+          +---------------------V------------------------+
+          |                                              |
+          |           Node: PLANNER                      |
+          |           (`call_planner_node` in agents/planner_agent.py)
+          |             - Receives `AgentState` (messages)
+          |             - Uses `planner_llm` to create a step-by-step `plan`
+          |             - Updates `AgentState` with `plan`, `next_step_index=0`, `decision="execute_step"`
+          |             - Returns updated `AgentState`
+          |                                              |
+          +---------------------|------------------------+
+                                |
+          +---------------------V------------------------+
+          |           Edge: `route_decision`             |
+          |           (Conditional routing based on `AgentState.decision`)
+          |             - Checks `decision` ("execute_step")
+          +---------------------|------------------------+
+                                |
+          +---------------------V------------------------+
+          |           Node: EXECUTOR                     |
+          |           (`call_executor_node` in agents/executor_agent.py)
+          |             - Receives `AgentState` (plan, next_step_index)
+          |             - Identifies `current_step` from the `plan`
+          |             - Determines if a tool is needed for this step
+          |                                              |
+          +---------------------|------------------------+
+          |       (Tool Identified?)                     |
+          |       YES                                    NO
+          V                                              V
+    +-----------------+                         +----------------------------+
+    | Call Tool (tools.py) |                         | General LLM Reasoning (with `llm`) |
+    |   - If `web_search`:                           | (Processes the step directly with LLM) |
+    |     - Calls `web_search` tool                 |                            |
+    |     - Returns string result                    |                            |
+    |   - If `manual_lookup_structured`:             |                            |
+    |     - Calls `manual_lookup_structured` tool    |                            |
+    |     - Invokes `run_rag_chain` (rag_chains.py)  |                            |
+    |         - Gets retriever (vectorstore_manager.py) |                            |
+    |         - Runs LangChain RAG chain:            |                            |
+    |           - Rephrases question (`question_rephrase_llm`) |                    |
+    |           - Retrieves docs (from FAISS via retriever) |                      |
+    |           - Generates answer (`llm`)           |                            |
+    |         - Returns `RagToolOutput` (answer, source_documents) |               |
+    |                                                |                            |
+    +-----------------|----------------------------------------------------------+
+                      |
+                      V
+    (Executor updates `AgentState` with `tool_output`, increments `next_step_index`)
+    (Sets `decision` to "execute_step" or "synthesize" based on plan completion)
+                      |
+          +---------------------V------------------------+
+          |           Edge: `route_decision`             |
+          |           (Conditional routing based on `AgentState.decision`)
+          |             - If `next_step_index < len(plan)`: "execute_step"
+          |             - If `next_step_index == len(plan)`: "synthesize"
+          +---------------------|------------------------+
+                                |
+          +---------------------V------------------------+
+          |                   LOOP                       |
+          |       (If "execute_step", go back to EXECUTOR)
+          |       (Otherwise, continue to SYNTHESIZER)
+          +---------------------|------------------------+
+                                |
+          +---------------------V------------------------+
+          |           Node: SYNTHESIZER                  |
+          |           (`call_synthesizer_node` in agents/synthesizer_agent.py)
+          |             - Receives `AgentState` (original query, plan, tool_output)
+          |             - Uses `llm` and `AgentResponse` parser (output_schemas.py)
+          |             - Synthesizes final `AgentResponse` (JSON: content, source, confidence, follow-ups)
+          |             - Updates `AgentState` with `final_answer_content`, `decision="end"`
+          |             - Returns updated `AgentState`
+          +---------------------|------------------------+
+                                |
+          +---------------------V------------------------+
+          |           Edge: `route_decision`             |
+          |             - Checks `decision` ("end")
+          +---------------------|------------------------+
+                                |
+                            END of `langgraph_app.invoke()`
+                                |
+                                V
+      `machine_agent_manager.invoke_agent()` returns `final_answer_content` (JSON string)
+                                |
+                                V
+           `respond_to_user` (app.py) parses and formats the JSON
+                                |
+                                V
+               Gradio Chatbot Displays Formatted Response
+                                |
+                                V
+                              END
