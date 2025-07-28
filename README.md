@@ -1,10 +1,10 @@
 # Machine Troubleshooter & Explainer AI
 An intelligent AI assistant for diagnosing, explaining, and troubleshooting machines using large language models (LLMs) orchestrated with LangGraph and LangChain. This project demonstrates a multi-agent architecture combining planning, execution, and answer synthesis for complex workflows, backed by a real-time streaming Gradio web interface.
 
-###🚀 Project Overview
+### 🚀 Project Overview
 This system accepts user queries related to machine operation, specifications, troubleshooting manuals, and general knowledge. It intelligently plans the next best steps, executes sub-tasks (like querying a knowledge base), and synthesizes comprehensive answers with source and confidence indicators. The architecture enables conditional routing, robust error handling, and provides a highly responsive user experience through streaming. The project currently leverages a local LLM server powered by llama.cpp, specifically utilizing the capybarahermes-2.5-mistral-7b.Q5_K_M.gguf model.
 
-###🧩 Architecture & Components
+### 🧩 Architecture & Components
 
 ### LangGraph Workflow
 
